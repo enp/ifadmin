@@ -4,18 +4,43 @@ use Modern::Perl;
 
 use POSIX;
 
+use File::Basename qw(dirname);
+
 use NetSNMP::agent (':all');
 use NetSNMP::ASN qw(ASN_INTEGER);
 
 use constant ifAdminStatus => '.1.3.6.1.2.1.2.2.1.7';
 
 my %values;
+my $caller = caller();
+my %conf;
+
+sub readconf {
+    my $conf = dirname(__FILE__).'/ifadmin.conf';
+    open(FILE, "<$conf") or die "Can't open configuration file $conf : $!";
+    my @lines = <FILE>;
+    close(FILE);
+        foreach (@lines) {
+        chomp;      # no newline
+        s/#.*//;    # no comments
+        s/^\s+//;   # no leading white
+        s/\s+$//;   # no trailing white
+        next unless length; # anything left?
+        my @items = split(/\s+/, $_);
+        $conf{$items[0]} = $items[1];
+    }
+}
 
 sub debug {
     my $message = shift;
-    open my $FILE, ">>", "/tmp/ifadmin.log";
-    print $FILE strftime("%F %T",localtime())." $message\n";
-    close $FILE;
+    if ($caller) {
+        my $logfile = $conf{'logfile'};
+        open (FILE, ">>$logfile") or die "Can't open log file $logfile : $!";
+        say FILE strftime("%F %T",localtime())." $message";
+        close(FILE);
+    } else {
+        say strftime("%F %T",localtime())." $message";
+    }
 }
 
 sub handler {
@@ -38,4 +63,11 @@ sub handler {
     }
 }
 
-new NetSNMP::agent()->register('ifAdminStatus', ifAdminStatus, \&handler);
+readconf();
+debug('ifadmin init');
+
+if ($caller) {
+    new NetSNMP::agent()->register('ifAdminStatus', ifAdminStatus, \&handler);
+} else {
+    debug('ifadmin standalone run');
+}
