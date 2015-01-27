@@ -35,12 +35,25 @@ sub debug {
     my $message = shift;
     if ($caller) {
         my $logfile = $conf{'logfile'};
-        open (FILE, ">>$logfile") or die "Can't open log file $logfile : $!";
+        open(FILE, ">>$logfile") or die "Can't open log file $logfile : $!";
         say FILE strftime("%F %T",localtime())." $message";
         close(FILE);
     } else {
-        say strftime("%F %T",localtime())." $message";
+        say $message;
     }
+}
+
+sub get {
+    my $index = shift;
+    my $value = $values{$index} || 1;
+    debug("GET index [$index] => $value");
+    return $value;
+}
+
+sub set {
+    my $index = shift;
+    my $value = shift || die "Empty value";
+    debug("GET index [$index] => $value");
 }
 
 sub handler {
@@ -51,11 +64,9 @@ sub handler {
         my $index = $elements[-1];
         if ($size == 11 && $index > 0) {
             if ($request_info->getMode() == MODE_GET) {
-                debug("GET index [$index] => ".$values{$index});
-                $request->setValue(ASN_INTEGER, $values{$index} || 1);
+                $request->setValue(ASN_INTEGER, get($index));
             } elsif ($request_info->getMode() == MODE_SET_COMMIT) {
-                debug("SET index [$index] <= ".$request->getValue());
-                $values{$index} = $request->getValue();
+                set($index, $request->getValue());
             }
         } else {
             debug("Wrong size [$size] or index [$index]");
@@ -64,10 +75,24 @@ sub handler {
 }
 
 readconf();
-debug('ifadmin init');
 
 if ($caller) {
+
     new NetSNMP::agent()->register('ifAdminStatus', ifAdminStatus, \&handler);
+
 } else {
-    debug('ifadmin standalone run');
+
+    if ($#ARGV > 0) {
+        my $operation = shift;
+        eval {
+            my $code = \&$operation;
+            my $data = $code->(@ARGV);
+            debug($data);
+        } or do {
+            debug("Can't execute $operation : $@");
+        };
+    } else {
+        debug("Usage: $0 <operation> <index> [<value>]");
+    }
+
 }
