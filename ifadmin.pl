@@ -18,6 +18,8 @@ use Data::Dump;
 
 use constant ifAdminStatus => '.1.3.6.1.2.1.2.2.1.7';
 
+$SIG{CHLD} = "IGNORE";
+
 my $caller = caller();
 my %conf;
 my $ncf;
@@ -164,18 +166,22 @@ sub get {
 
 sub set {
     my ($index, $status) = @_;
-    my %status = ( 1 => 'up', 2 => 'down' );
-    my @dumps;
-    eval {
-        my ($dump, $interface) = get_interface($index);
-        push @dumps, $dump;
-        my ($name, $unit) = split(/\./,$interface->{'name'});
-        my $dumps = set_interface($name, $unit, $status{$status});
-        push @dumps, @$dumps;
-        debug("SET index [$index] ($status{$status}) => $name.$unit : [ ".join(', ',@dumps)." ]");
-    } or do {
-        debug("SET index [$index] ($status{$status}) => $@");
-    };
+    if (!defined($caller) or ($caller and fork() == 0)) {
+      my %status = ( 1 => 'up', 2 => 'down' );
+      my @dumps;
+      eval {
+          netconf() if ($caller);
+          my ($dump, $interface) = get_interface($index);
+          push @dumps, $dump;
+          my ($name, $unit) = split(/\./,$interface->{'name'});
+          my $dumps = set_interface($name, $unit, $status{$status});
+          push @dumps, @$dumps;
+          debug("SET index [$index] ($status{$status}) => $name.$unit : [ ".join(', ',@dumps)." ]");
+      } or do {
+          debug("SET index [$index] ($status{$status}) => $@");
+      };
+      exit() if ($caller);
+    }
     return 0;
 }
 
